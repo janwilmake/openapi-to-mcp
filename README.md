@@ -25,4 +25,7 @@ Idea:
 - Create remote A2A-server for each OpenAPI (not started)
 - Set this up in a modular way such that others can easily contribute other specs (not started)
 
-TODO:
+[Experiments](experiments):
+
+- `cloudflare-remote-mcp-demo-analysis`: took the code from https://github.com/cloudflare/ai/tree/main/demos/remote-mcp-server and some dependencies to prompt its spec
+- `dynamic-remote-mcp-server` adaptation of https://github.com/cloudflare/ai/tree/main/demos/remote-mcp-server trying to make that dynamic
