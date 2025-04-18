@@ -1,0 +1,408 @@
+openapi: "3.0.0"
+info:
+  title: "OAuth Provider with MCP Integration"
+  version: "1.0.0"
+  description: "API specification for an OAuth 2.0 provider with Model Context Protocol (MCP) integration"
+
+servers:
+  - url: "https://api.example.com"
+    description: "API Server"
+
+paths:
+  /:
+    get:
+      summary: "Homepage"
+      description: "Renders the README content as the homepage"
+      responses:
+        "200":
+          description: "Successful response"
+          content:
+            text/html:
+              schema:
+                type: "string"
+
+  /authorize:
+    get:
+      summary: "OAuth Authorization Endpoint"
+      description: "Initiates OAuth authorization flow and displays the authorization screen"
+      parameters:
+        - name: "response_type"
+          in: "query"
+          required: true
+          schema:
+            type: "string"
+            enum: ["code", "token"]
+          description: "OAuth response type (code for authorization code flow, token for implicit flow)"
+        - name: "client_id"
+          in: "query"
+          required: true
+          schema:
+            type: "string"
+          description: "Client identifier"
+        - name: "redirect_uri"
+          in: "query"
+          required: true
+          schema:
+            type: "string"
+            format: "uri"
+          description: "URI to redirect to after authorization"
+        - name: "scope"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+          description: "Space-separated list of requested permission scopes"
+        - name: "state"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+          description: "Client state value to be returned in the redirect"
+        - name: "code_challenge"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+          description: "PKCE code challenge"
+        - name: "code_challenge_method"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+            enum: ["plain", "S256"]
+          description: "PKCE code challenge method"
+      responses:
+        "200":
+          description: "Authorization page displayed successfully"
+          content:
+            text/html:
+              schema:
+                type: "string"
+
+  /approve:
+    post:
+      summary: "Authorization Approval Endpoint"
+      description: "Processes user login and authorization approval"
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: "object"
+              required:
+                - "action"
+                - "oauthReqInfo"
+              properties:
+                action:
+                  type: "string"
+                  enum: ["approve", "reject", "login_approve"]
+                  description: "Action to take"
+                oauthReqInfo:
+                  type: "string"
+                  description: "JSON string of OAuth request information"
+                email:
+                  type: "string"
+                  format: "email"
+                  description: "User email address for login"
+                password:
+                  type: "string"
+                  format: "password"
+                  description: "User password for login"
+      responses:
+        "200":
+          description: "Approval processed successfully"
+          content:
+            text/html:
+              schema:
+                type: "string"
+        "401":
+          description: "Invalid login"
+          content:
+            text/html:
+              schema:
+                type: "string"
+
+  /token:
+    post:
+      summary: "OAuth Token Endpoint"
+      description: "Issues, refreshes, and revokes OAuth tokens"
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: "object"
+              required:
+                - "grant_type"
+              properties:
+                grant_type:
+                  type: "string"
+                  enum: ["authorization_code", "refresh_token"]
+                  description: "OAuth grant type"
+                client_id:
+                  type: "string"
+                  description: "Client identifier"
+                client_secret:
+                  type: "string"
+                  description: "Client secret for confidential clients"
+                code:
+                  type: "string"
+                  description: "Authorization code (for authorization_code grant type)"
+                redirect_uri:
+                  type: "string"
+                  format: "uri"
+                  description: "Redirect URI used in the authorization request"
+                refresh_token:
+                  type: "string"
+                  description: "Refresh token (for refresh_token grant type)"
+                code_verifier:
+                  type: "string"
+                  description: "PKCE code verifier (for authorization_code grant type with PKCE)"
+      responses:
+        "200":
+          description: "Token issued successfully"
+          content:
+            application/json:
+              schema:
+                type: "object"
+                properties:
+                  access_token:
+                    type: "string"
+                    description: "Access token"
+                  token_type:
+                    type: "string"
+                    description: "Token type (always 'bearer')"
+                  expires_in:
+                    type: "integer"
+                    description: "Token lifetime in seconds"
+                  refresh_token:
+                    type: "string"
+                    description: "Refresh token for obtaining new access tokens"
+                  scope:
+                    type: "string"
+                    description: "Space-separated list of granted scopes"
+        "400":
+          description: "Bad request"
+          content:
+            application/json:
+              schema:
+                type: "object"
+                properties:
+                  error:
+                    type: "string"
+                  error_description:
+                    type: "string"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                type: "object"
+                properties:
+                  error:
+                    type: "string"
+                  error_description:
+                    type: "string"
+
+  /register:
+    post:
+      summary: "OAuth Client Registration Endpoint"
+      description: "Registers a new OAuth client"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "object"
+              required:
+                - "redirect_uris"
+              properties:
+                redirect_uris:
+                  type: "array"
+                  items:
+                    type: "string"
+                    format: "uri"
+                  description: "List of allowed redirect URIs"
+                client_name:
+                  type: "string"
+                  description: "Human-readable name of the client"
+                logo_uri:
+                  type: "string"
+                  format: "uri"
+                  description: "URL to the client's logo"
+                client_uri:
+                  type: "string"
+                  format: "uri"
+                  description: "URL to the client's homepage"
+                policy_uri:
+                  type: "string"
+                  format: "uri"
+                  description: "URL to the client's privacy policy"
+                tos_uri:
+                  type: "string"
+                  format: "uri"
+                  description: "URL to the client's terms of service"
+                jwks_uri:
+                  type: "string"
+                  format: "uri"
+                  description: "URL to the client's JSON Web Key Set"
+                contacts:
+                  type: "array"
+                  items:
+                    type: "string"
+                    format: "email"
+                  description: "List of contact emails"
+                grant_types:
+                  type: "array"
+                  items:
+                    type: "string"
+                  description: "List of grant types the client supports"
+                response_types:
+                  type: "array"
+                  items:
+                    type: "string"
+                  description: "List of response types the client supports"
+                token_endpoint_auth_method:
+                  type: "string"
+                  enum: ["client_secret_basic", "client_secret_post", "none"]
+                  description: "Authentication method for the token endpoint"
+      responses:
+        "201":
+          description: "Client registered successfully"
+          content:
+            application/json:
+              schema:
+                type: "object"
+                properties:
+                  client_id:
+                    type: "string"
+                  client_secret:
+                    type: "string"
+                  redirect_uris:
+                    type: "array"
+                    items:
+                      type: "string"
+                  client_name:
+                    type: "string"
+                  logo_uri:
+                    type: "string"
+                  client_uri:
+                    type: "string"
+                  policy_uri:
+                    type: "string"
+                  tos_uri:
+                    type: "string"
+                  jwks_uri:
+                    type: "string"
+                  contacts:
+                    type: "array"
+                    items:
+                      type: "string"
+                  grant_types:
+                    type: "array"
+                    items:
+                      type: "string"
+                  response_types:
+                    type: "array"
+                    items:
+                      type: "string"
+                  token_endpoint_auth_method:
+                    type: "string"
+                  registration_client_uri:
+                    type: "string"
+                  client_id_issued_at:
+                    type: "integer"
+        "400":
+          description: "Invalid client metadata"
+          content:
+            application/json:
+              schema:
+                type: "object"
+                properties:
+                  error:
+                    type: "string"
+                  error_description:
+                    type: "string"
+
+  /.well-known/oauth-authorization-server:
+    get:
+      summary: "OAuth Server Metadata Endpoint"
+      description: "Provides OAuth server metadata according to RFC 8414"
+      responses:
+        "200":
+          description: "OAuth server metadata"
+          content:
+            application/json:
+              schema:
+                type: "object"
+                properties:
+                  issuer:
+                    type: "string"
+                  authorization_endpoint:
+                    type: "string"
+                    format: "uri"
+                  token_endpoint:
+                    type: "string"
+                    format: "uri"
+                  registration_endpoint:
+                    type: "string"
+                    format: "uri"
+                  scopes_supported:
+                    type: "array"
+                    items:
+                      type: "string"
+                  response_types_supported:
+                    type: "array"
+                    items:
+                      type: "string"
+                  response_modes_supported:
+                    type: "array"
+                    items:
+                      type: "string"
+                  grant_types_supported:
+                    type: "array"
+                    items:
+                      type: "string"
+                  token_endpoint_auth_methods_supported:
+                    type: "array"
+                    items:
+                      type: "string"
+                  revocation_endpoint:
+                    type: "string"
+                    format: "uri"
+                  code_challenge_methods_supported:
+                    type: "array"
+                    items:
+                      type: "string"
+
+  /sse:
+    get:
+      summary: "MCP Server-Sent Events Endpoint"
+      description: "Protected API endpoint for MCP functionality via server-sent events"
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: "SSE stream established"
+          content:
+            text/event-stream:
+              schema:
+                type: "string"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                type: "object"
+                properties:
+                  error:
+                    type: "string"
+                  error_description:
+                    type: "string"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: "http"
+      scheme: "bearer"
+      bearerFormat: "JWT"
