@@ -1,0 +1,5 @@
+{
+  "scripts": {
+    "types": "curl -o mcp.schema.json https://raw.githubusercontent.com/modelcontextprotocol/modelcontextprotocol/refs/heads/main/schema/2025-03-26/schema.json && json2ts -i mcp.schema.json -o mcp.d.ts --unreachableDefinitions"
+  }
+}

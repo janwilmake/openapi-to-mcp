@@ -20,7 +20,9 @@ SPECS
 
 Idea:
 
-- Improve openapisearch such that it tracks used openapi specs found through the MCP
-- Create remote MCP-server for each OpenAPI
-- Create remote A2A-server for each OpenAPI
-- Set this up in a modular way such that others can easily contribute other specs.
+- Improve openapisearch such that it tracks used openapi specs found through the MCP (see https://github.com/janwilmake/openapisearch)
+- Create remote MCP-server for each OpenAPI (this repo)
+- Create remote A2A-server for each OpenAPI (not started)
+- Set this up in a modular way such that others can easily contribute other specs (not started)
+
+TODO:
