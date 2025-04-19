@@ -2,6 +2,8 @@
 
 ![](openapi-to-mcp.drawio.png)
 
+![](toolflare.drawio.png)
+
 Thread:
 
 - Markdown: https://xymake.com/janwilmake/status/1913196601679523922
