@@ -2,12 +2,11 @@
 
 ![](openapi-to-mcp.drawio.png)
 
+[![](https://badge.xymake.com/janwilmake/status/1913196601679523922)](https://xymake.com/janwilmake/status/1913196601679523922)
+
 ![](toolflare.drawio.png)
 
-Thread:
-
-- Markdown: https://xymake.com/janwilmake/status/1913196601679523922
-- HTML: https://x.com/janwilmake/status/1913196601679523922
+[![](https://badge.xymake.com/janwilmake/status/1913660585356501195)](https://xymake.com/janwilmake/status/1913660585356501195)
 
 SPECS
 
