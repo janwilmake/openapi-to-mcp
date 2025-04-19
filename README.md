@@ -31,3 +31,7 @@ Idea:
 
 - `cloudflare-remote-mcp-demo-analysis`: took the code from https://github.com/cloudflare/ai/tree/main/demos/remote-mcp-server and some dependencies to prompt its spec
 - `dynamic-remote-mcp-server` adaptation of https://github.com/cloudflare/ai/tree/main/demos/remote-mcp-server trying to make that dynamic
+
+Ongoing work (to be announced):
+
+- https://github.com/janwilmake/curlmcp
