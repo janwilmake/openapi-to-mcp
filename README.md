@@ -1,5 +1,7 @@
 # OpenAPI to MCP
 
+[Thread](https://x.com/janwilmake/status/1965060951444508938)
+
 ![](v3.drawio.png)
 
 OpenAPI-to-MCP automatically discovers OpenAPI specs, builds proper MCP configurations, and proxies requests with full parameter handling and authentication support!
