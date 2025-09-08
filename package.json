@@ -1,5 +1,17 @@
 {
+  "name": "openapi-to-mcp-worker",
+  "version": "1.0.0",
+  "main": "main.ts",
   "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
     "types": "curl -o mcp.schema.json https://raw.githubusercontent.com/modelcontextprotocol/modelcontextprotocol/refs/heads/main/schema/2025-03-26/schema.json && json2ts -i mcp.schema.json -o mcp.d.ts --unreachableDefinitions"
+  },
+  "dependencies": {
+    "yaml": "^2.3.4"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250819.0",
+    "wrangler": "^3.78.12"
   }
 }
