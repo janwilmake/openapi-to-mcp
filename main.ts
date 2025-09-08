@@ -72,22 +72,46 @@ interface OpenAPISpec {
   servers?: Array<{ url: string; description?: string }>;
 }
 
+// Helper function to create response with proper CORS headers
+function createCorsResponse(
+  body: BodyInit | null,
+  options: ResponseInit = {}
+): Response {
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS, GET",
+    "Access-Control-Allow-Headers":
+      "Content-Type, Authorization, MCP-Protocol-Version",
+    "Access-Control-Max-Age": "86400",
+  };
+
+  // Merge headers, ensuring CORS headers take precedence
+  const headers = new Headers(options.headers);
+
+  // Remove any existing CORS headers to prevent duplicates
+  headers.delete("Access-Control-Allow-Origin");
+  headers.delete("Access-Control-Allow-Methods");
+  headers.delete("Access-Control-Allow-Headers");
+  headers.delete("Access-Control-Max-Age");
+
+  // Add our CORS headers
+  Object.entries(corsHeaders).forEach(([key, value]) => {
+    headers.set(key, value);
+  });
+
+  return new Response(body, {
+    ...options,
+    headers,
+  });
+}
+
 export default {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
 
     // Handle CORS preflight
     if (request.method === "OPTIONS") {
-      return new Response(null, {
-        status: 204,
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "POST, OPTIONS",
-          "Access-Control-Allow-Headers":
-            "Content-Type, Authorization, MCP-Protocol-Version",
-          "Access-Control-Max-Age": "86400",
-        },
-      });
+      return createCorsResponse(null, { status: 204 });
     }
 
     // Handle .well-known/oauth-protected-resource proxy
@@ -102,7 +126,7 @@ export default {
 
         // Validate hostname format
         if (!isValidHostname(hostname)) {
-          return new Response(
+          return createCorsResponse(
             JSON.stringify({ error: "Invalid hostname format" }),
             {
               status: 400,
@@ -126,15 +150,23 @@ export default {
                 }),
             });
 
-            // If successful, return the response
+            // If successful, return the response with CORS headers
             if (response.ok) {
-              return new Response(response.body, {
+              const json: any = await response.json();
+              json.resource = `${url.origin}/${hostname}/mcp`;
+              const responseHeaders = new Headers();
+
+              // Copy non-CORS headers from the original response
+              response.headers.forEach((value, key) => {
+                if (!key.toLowerCase().startsWith("access-control-")) {
+                  responseHeaders.set(key, value);
+                }
+              });
+
+              return createCorsResponse(JSON.stringify(json, undefined, 2), {
                 status: response.status,
                 statusText: response.statusText,
-                headers: {
-                  ...Object.fromEntries(response.headers.entries()),
-                  "Access-Control-Allow-Origin": "*",
-                },
+                headers: responseHeaders,
               });
             }
           } catch (error) {
@@ -158,32 +190,42 @@ export default {
               }),
           });
 
-          return new Response(response.body, {
+          if (!response.ok) {
+            return response;
+          }
+
+          const json: any = await response.json();
+          json.resource = `${url.origin}/${hostname}/mcp`;
+
+          const responseHeaders = new Headers();
+
+          // Copy non-CORS headers from the original response
+          response.headers.forEach((value, key) => {
+            if (!key.toLowerCase().startsWith("access-control-")) {
+              responseHeaders.set(key, value);
+            }
+          });
+
+          return createCorsResponse(JSON.stringify(json), {
             status: response.status,
             statusText: response.statusText,
-            headers: {
-              ...Object.fromEntries(response.headers.entries()),
-              "Access-Control-Allow-Origin": "*",
-            },
+            headers: responseHeaders,
           });
         } catch (error) {
-          return new Response(
+          return createCorsResponse(
             JSON.stringify({
               error: "Failed to proxy to oauth-protected-resource endpoint",
               details: error.message,
             }),
             {
               status: 502,
-              headers: {
-                "Content-Type": "application/json",
-                "Access-Control-Allow-Origin": "*",
-              },
+              headers: { "Content-Type": "application/json" },
             }
           );
         }
       }
 
-      return new Response(
+      return createCorsResponse(
         JSON.stringify({
           error:
             "Invalid oauth-protected-resource URL structure. Use: /.well-known/oauth-protected-resource/{hostname}/mcp",
@@ -192,10 +234,7 @@ export default {
         }),
         {
           status: 400,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          },
+          headers: { "Content-Type": "application/json" },
         }
       );
     }
@@ -203,7 +242,7 @@ export default {
     // Parse URL structure: /{hostname}/mcp
     const pathParts = url.pathname.split("/").filter(Boolean);
     if (pathParts.length !== 2 || pathParts[1] !== "mcp") {
-      return new Response(
+      return createCorsResponse(
         JSON.stringify({
           error: "Invalid URL structure. Use: /{hostname}/mcp",
           example: "https://openapimcp.com/api.example.com/mcp",
@@ -219,7 +258,7 @@ export default {
 
     // Validate hostname format
     if (!isValidHostname(hostname)) {
-      return new Response(
+      return createCorsResponse(
         JSON.stringify({ error: "Invalid hostname format" }),
         {
           status: 400,
@@ -239,21 +278,25 @@ export default {
       if (request.method === "POST") {
         const response = await handleMcpRequest(request, mcpConfig, hostname);
 
-        // Add CORS headers
-        return new Response(response.body, {
+        // Create new response with proper CORS headers
+        const responseBody = response.body;
+        const responseHeaders = new Headers();
+
+        // Copy non-CORS headers from the original response
+        response.headers.forEach((value, key) => {
+          if (!key.toLowerCase().startsWith("access-control-")) {
+            responseHeaders.set(key, value);
+          }
+        });
+
+        return createCorsResponse(responseBody, {
           status: response.status,
           statusText: response.statusText,
-          headers: {
-            ...Object.fromEntries(response.headers.entries()),
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "POST, OPTIONS",
-            "Access-Control-Allow-Headers":
-              "Content-Type, Authorization, MCP-Protocol-Version",
-          },
+          headers: responseHeaders,
         });
       }
 
-      return new Response(
+      return createCorsResponse(
         `MCP endpoint ready for ${hostname}.\nUse POST requests with MCP protocol.\nAvailable tools: ${
           mcpConfig.toolOperationIds?.join(", ") || "none"
         }\nRequires auth: ${mcpConfig.requiresAuth}`,
@@ -264,7 +307,7 @@ export default {
       );
     } catch (error) {
       console.error("Error processing request:", error);
-      return new Response(
+      return createCorsResponse(
         JSON.stringify({
           error: "Failed to process OpenAPI specification",
           details: error.message,
@@ -836,8 +879,14 @@ async function checkAuth(
         }
       }
 
-      // Clone the response and add www-authenticate if needed
-      const headers = new Headers(apiResponse.headers);
+      // Create new headers without existing CORS headers
+      const headers = new Headers();
+      apiResponse.headers.forEach((value, key) => {
+        if (!key.toLowerCase().startsWith("access-control-")) {
+          headers.set(key, value);
+        }
+      });
+
       if (wwwAuth && !headers.has("www-authenticate")) {
         headers.set("www-authenticate", wwwAuth);
       }
