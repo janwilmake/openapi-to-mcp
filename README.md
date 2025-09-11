@@ -31,6 +31,32 @@ type MCPConfig = {
 };
 ```
 
+For example:
+
+```json
+{
+  "openapi": "3.0.3",
+  "info": {
+    "x-mcp": {
+      "protocolVersion": "2025-03-26",
+      // this would only enable the myOperation operation, not the other ones
+      "toolOperationIds": ["myOperation"]
+    }
+    //... other info
+  }
+  "paths": {
+    "/some/operation":{
+      "get": {
+        "operationId": "myOperation",
+        //...config
+      }
+    }
+    ///.....
+  },
+  //.....
+}
+```
+
 Also, please note that it is expected that IF the OpenAPI server exposes OAUTH, it follows the MCP recommenation/specification: https://modelcontextprotocol.io/specification/draft/basic/authorization.
 
 Example: https://mcp.openapisearch.com/curlmcp.com/mcp
