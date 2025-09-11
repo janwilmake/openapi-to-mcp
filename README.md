@@ -8,7 +8,28 @@ OpenAPI-to-MCP automatically discovers OpenAPI specs, builds proper MCP configur
 
 To test, run `npx @modelcontextprotocol/inspector` and use any API as MCP by passing url https://mcp.openapisearch.com/{hostname}/mcp
 
-Please note, the openapi can provide a filter to the tools, prompts, and resources available by providing operations with ids `tools/list`, `prompts/list` and `resources/list`.
+Please note, the openapi can provide a filter to the tools used for MCP by providing `info.x-mcp` with:
+
+```ts
+type MCPConfig = {
+  /** defaults to 2025-03-26 */
+  protocolVersion?: string;
+  /** GET endpoint that returns MCP-compatible 401 if authentication isn't valid.
+   *
+   * e.g. '/me'
+   *
+   * Will be used before responding with "initialize" and '.../list' methods
+   */
+  authEndpoint?: string;
+  serverInfo?: {
+    name: string;
+    version: string;
+  };
+  promptOperationIds?: string[];
+  toolOperationIds?: string[];
+  resourceOperationIds?: string[];
+};
+```
 
 Also, please note that it is expected that IF the OpenAPI server exposes OAUTH, it follows the MCP recommenation/specification: https://modelcontextprotocol.io/specification/draft/basic/authorization.
 

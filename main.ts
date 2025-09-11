@@ -1,20 +1,16 @@
 import YAML from "yaml";
 
 interface McpConfig {
-  protocolVersion?: string;
-  serverInfo?: {
+  protocolVersion: string;
+  serverInfo: {
     name: string;
     version: string;
   };
-  promptOperationIds?: string[];
-  toolOperationIds?: string[];
-  resourceOperationIds?: string[];
-  authOperation?: {
-    path: string;
-    method: string;
-    operation: OpenAPIOperation;
-  };
-  requiresAuth?: boolean;
+  authEndpoint?: string;
+  promptOperationIds: string[];
+  toolOperationIds: string[];
+  resourceOperationIds: string[];
+  requiresAuth: boolean;
   allOperations: Map<
     string,
     { path: string; method: string; operation: OpenAPIOperation }
@@ -58,6 +54,17 @@ interface OpenAPISpec {
   info: {
     title: string;
     version: string;
+    "x-mcp"?: {
+      protocolVersion?: string;
+      authEndpoint?: string;
+      serverInfo?: {
+        name: string;
+        version: string;
+      };
+      promptOperationIds?: string[];
+      toolOperationIds?: string[];
+      resourceOperationIds?: string[];
+    };
   };
   paths: {
     [path: string]: {
@@ -297,9 +304,9 @@ export default {
       }
 
       return createCorsResponse(
-        `MCP endpoint ready for ${hostname}.\nUse POST requests with MCP protocol.\nAvailable tools: ${
-          mcpConfig.toolOperationIds?.join(", ") || "none"
-        }\nRequires auth: ${mcpConfig.requiresAuth}`,
+        `MCP endpoint ready for ${hostname}.\nUse POST requests with MCP protocol.\nAvailable tools: ${mcpConfig.toolOperationIds.join(
+          ", "
+        )}\nRequires auth: ${mcpConfig.requiresAuth}`,
         {
           status: 200,
           headers: { "Content-Type": "text/plain" },
@@ -393,43 +400,64 @@ async function buildMcpConfig(
     }
   }
 
-  // Check for specific MCP operations
-  const toolsListOp = allOperations.get("tools/list");
-  const promptsListOp = allOperations.get("prompts/list");
-  const resourcesListOp = allOperations.get("resources/list");
+  // Get x-mcp configuration or use defaults
+  const xMcp = openapi.info["x-mcp"];
 
-  let toolOperationIds: string[] = [];
-  let promptOperationIds: string[] = [];
-  let resourceOperationIds: string[] = [];
+  const protocolVersion = xMcp?.protocolVersion || "2025-03-26";
+  const serverInfo = xMcp?.serverInfo || {
+    name: openapi.info.title || `${hostname} API`,
+    version: openapi.info.version || "1.0.0",
+  };
 
-  if (toolsListOp || promptsListOp || resourcesListOp) {
-    // Use specific MCP operations if they exist
-    if (toolsListOp) toolOperationIds = ["tools/list"];
-    if (promptsListOp) promptOperationIds = ["prompts/list"];
-    if (resourcesListOp) resourceOperationIds = ["resources/list"];
+  // Default: all operations are tools unless explicitly specified in x-mcp
+  let toolOperationIds: string[];
+  let promptOperationIds: string[];
+  let resourceOperationIds: string[];
+
+  if (xMcp) {
+    // Use explicit configuration from x-mcp
+    toolOperationIds = xMcp.toolOperationIds || [];
+    promptOperationIds = xMcp.promptOperationIds || [];
+    resourceOperationIds = xMcp.resourceOperationIds || [];
+
+    // If none are specified, default all to tools
+    if (
+      toolOperationIds.length === 0 &&
+      promptOperationIds.length === 0 &&
+      resourceOperationIds.length === 0
+    ) {
+      toolOperationIds = Array.from(allOperations.keys());
+    }
   } else {
-    // Treat all operations as tools if no specific MCP operations found
+    // No x-mcp: treat all operations as tools
     toolOperationIds = Array.from(allOperations.keys());
+    promptOperationIds = [];
+    resourceOperationIds = [];
   }
 
+  // Filter operation IDs to only include those that exist in the spec
+  toolOperationIds = toolOperationIds.filter((id) => allOperations.has(id));
+  promptOperationIds = promptOperationIds.filter((id) => allOperations.has(id));
+  resourceOperationIds = resourceOperationIds.filter((id) =>
+    allOperations.has(id)
+  );
+
   // Check for authorization requirements
-  const { requiresAuth, authOperation } = await checkAuthRequirements(
+  const { requiresAuth } = await checkAuthRequirements(
     openapi,
     allOperations,
-    hostname
+    hostname,
+    xMcp?.authEndpoint
   );
 
   return {
-    protocolVersion: "2025-03-26",
-    serverInfo: {
-      name: openapi.info.title || `${hostname} API`,
-      version: openapi.info.version || "1.0.0",
-    },
+    protocolVersion,
+    serverInfo,
+    authEndpoint: xMcp?.authEndpoint,
     toolOperationIds,
     promptOperationIds,
     resourceOperationIds,
     requiresAuth,
-    authOperation,
     allOperations,
     openapi,
   };
@@ -441,71 +469,64 @@ async function checkAuthRequirements(
     string,
     { path: string; method: string; operation: OpenAPIOperation }
   >,
-  hostname: string
-): Promise<{ requiresAuth: boolean; authOperation?: any }> {
+  hostname: string,
+  authEndpoint?: string
+): Promise<{ requiresAuth: boolean }> {
+  // If authEndpoint is specified in x-mcp, test it
+  if (authEndpoint) {
+    try {
+      const testUrl = `https://${hostname}${authEndpoint}`;
+      console.log(`Testing auth with specified endpoint: ${testUrl}`);
+
+      const testResponse = await fetch(testUrl, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+      });
+
+      if (testResponse.status === 401) {
+        console.log(`Auth required for ${hostname} (via authEndpoint)`);
+        return { requiresAuth: true };
+      }
+
+      return { requiresAuth: false };
+    } catch (error) {
+      console.log(`Auth test failed for ${hostname}:`, error.message);
+      return { requiresAuth: false };
+    }
+  }
+
   // Check if there's global security or any operation has security
   const hasGlobalSecurity = openapi.security && openapi.security.length > 0;
 
   // Find first operation that requires auth
-  let authOperation = null;
+  let requiresAuth = false;
 
   for (const [opId, { path, method, operation }] of allOperations) {
     const hasSecurity = operation.security && operation.security.length > 0;
 
     if (hasGlobalSecurity || hasSecurity) {
-      authOperation = { path, method, operation };
-      break;
-    }
-  }
+      // Test the operation to see if it returns proper auth challenges
+      try {
+        const testUrl = `https://${hostname}${path}`;
+        console.log(`Testing auth with: ${method.toUpperCase()} ${testUrl}`);
 
-  if (!authOperation) {
-    return { requiresAuth: false };
-  }
+        const testResponse = await fetch(testUrl, {
+          method: method.toUpperCase(),
+          headers: { Accept: "application/json" },
+        });
 
-  // Test the auth operation to see if it returns proper auth challenges
-  try {
-    const testUrl = `https://${hostname}${authOperation.path}`;
-    console.log(
-      `Testing auth with: ${authOperation.method.toUpperCase()} ${testUrl}`
-    );
-
-    const testResponse = await fetch(testUrl, {
-      method: authOperation.method.toUpperCase(),
-      headers: { Accept: "application/json" },
-    });
-
-    if (testResponse.status === 401) {
-      const wwwAuth = testResponse.headers.get("www-authenticate");
-
-      if (!wwwAuth) {
-        // Check if resource metadata endpoint exists
-        const resourceMetadataUrl = `https://${hostname}/.well-known/oauth-protected-resource`;
-        try {
-          console.log(`Checking resource metadata at: ${resourceMetadataUrl}`);
-          const metadataResponse = await fetch(resourceMetadataUrl);
-          if (!metadataResponse.ok) {
-            throw new Error(
-              "No www-authenticate header and no resource metadata endpoint"
-            );
-          }
-          console.log("Found resource metadata endpoint");
-        } catch (error) {
-          throw new Error(
-            `Authorization required but no proper auth challenge: ${error.message}`
-          );
+        if (testResponse.status === 401) {
+          console.log(`Auth required for ${hostname} (via operation ${opId})`);
+          requiresAuth = true;
+          break;
         }
+      } catch (error) {
+        console.log(`Auth test failed for operation ${opId}:`, error.message);
       }
-
-      console.log(
-        `Auth required for ${hostname}, www-authenticate: ${wwwAuth}`
-      );
-      return { requiresAuth: true, authOperation };
     }
-  } catch (error) {
-    console.log(`Auth test failed for ${hostname}:`, error.message);
   }
 
-  return { requiresAuth: false };
+  return { requiresAuth };
 }
 
 async function handleMcpRequest(
@@ -532,15 +553,30 @@ async function handleMcpRequest(
           result: {
             protocolVersion: config.protocolVersion,
             capabilities: {
-              ...(config.promptOperationIds &&
-                config.promptOperationIds.length > 0 && { prompts: {} }),
-              ...(config.resourceOperationIds &&
-                config.resourceOperationIds.length > 0 && { resources: {} }),
-              ...(config.toolOperationIds &&
-                config.toolOperationIds.length > 0 && { tools: {} }),
+              ...(config.promptOperationIds.length > 0 && { prompts: {} }),
+              ...(config.resourceOperationIds.length > 0 && { resources: {} }),
+              ...(config.toolOperationIds.length > 0 && { tools: {} }),
             },
             serverInfo: config.serverInfo,
           },
+        }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    if (message.method === "ping") {
+      if (config.requiresAuth) {
+        const authResult = await checkAuth(request, config, hostname);
+        if (authResult) {
+          return authResult;
+        }
+      }
+
+      return new Response(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: message.id,
+          result: {},
         }),
         { headers: { "Content-Type": "application/json" } }
       );
@@ -560,30 +596,17 @@ async function handleMcpRequest(
         }
       }
 
-      // If we have a specific tools/list operation, proxy to it
-      if (config.toolOperationIds.includes("tools/list")) {
-        return await proxyToOperation(
-          "tools/list",
-          {},
-          request,
-          hostname,
-          config
-        );
-      }
-
-      // Otherwise, return all tool operations as tools
-      const tools = config.toolOperationIds
-        .filter((id) => id !== "tools/list")
-        .map((opId) => {
-          const op = config.allOperations.get(opId);
-          return {
-            name: opId,
-            title: op?.operation.summary || opId,
-            description:
-              op?.operation.description || `Tool for operation: ${opId}`,
-            inputSchema: extractInputSchema(op?.operation),
-          };
-        });
+      const tools = config.toolOperationIds.map((opId) => {
+        const op = config.allOperations.get(opId);
+        return {
+          name: opId,
+          description:
+            op?.operation.description ||
+            op?.operation.summary ||
+            `Tool for operation: ${opId}`,
+          inputSchema: extractInputSchema(op?.operation),
+        };
+      });
 
       return new Response(
         JSON.stringify({
@@ -604,27 +627,14 @@ async function handleMcpRequest(
         }
       }
 
-      if (config.promptOperationIds.includes("prompts/list")) {
-        return await proxyToOperation(
-          "prompts/list",
-          {},
-          request,
-          hostname,
-          config
-        );
-      }
-
-      const prompts = config.promptOperationIds
-        .filter((id) => id !== "prompts/list")
-        .map((opId) => {
-          const op = config.allOperations.get(opId);
-          return {
-            name: opId,
-            title: op?.operation.summary || opId,
-            description: op?.operation.description,
-            arguments: extractArguments(op?.operation),
-          };
-        });
+      const prompts = config.promptOperationIds.map((opId) => {
+        const op = config.allOperations.get(opId);
+        return {
+          name: opId,
+          description: op?.operation.description || op?.operation.summary,
+          arguments: extractArguments(op?.operation),
+        };
+      });
 
       return new Response(
         JSON.stringify({
@@ -645,28 +655,15 @@ async function handleMcpRequest(
         }
       }
 
-      if (config.resourceOperationIds.includes("resources/list")) {
-        return await proxyToOperation(
-          "resources/list",
-          {},
-          request,
-          hostname,
-          config
-        );
-      }
-
-      const resources = config.resourceOperationIds
-        .filter((id) => id !== "resources/list")
-        .map((opId) => {
-          const op = config.allOperations.get(opId);
-          return {
-            uri: `resource://${opId}`,
-            name: opId,
-            title: op?.operation.summary || opId,
-            description: op?.operation.description,
-            mimeType: inferMimeType(op?.operation),
-          };
-        });
+      const resources = config.resourceOperationIds.map((opId) => {
+        const op = config.allOperations.get(opId);
+        return {
+          uri: `resource://${opId}`,
+          name: opId,
+          description: op?.operation.description || op?.operation.summary,
+          mimeType: inferMimeType(op?.operation),
+        };
+      });
 
       return new Response(
         JSON.stringify({
@@ -850,18 +847,35 @@ async function checkAuth(
   config: McpConfig,
   hostname: string
 ): Promise<Response | null> {
-  if (!config.authOperation) {
-    return null;
+  // Use authEndpoint if specified, otherwise find first operation that requires auth
+  let testEndpoint = config.authEndpoint;
+
+  if (!testEndpoint) {
+    // Find first operation that might require auth
+    for (const [opId, { path, method, operation }] of config.allOperations) {
+      const hasGlobalSecurity =
+        config.openapi.security && config.openapi.security.length > 0;
+      const hasSecurity = operation.security && operation.security.length > 0;
+
+      if (hasGlobalSecurity || hasSecurity) {
+        testEndpoint = path;
+        break;
+      }
+    }
+  }
+
+  if (!testEndpoint) {
+    return null; // No auth required
   }
 
   try {
-    const apiResponse = await proxyToOperation(
-      config.authOperation.operation.operationId,
-      {},
-      request,
-      hostname,
-      config
-    );
+    const apiResponse = await fetch(`https://${hostname}${testEndpoint}`, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: request.headers.get("Authorization") || "",
+      },
+    });
 
     if (apiResponse.status === 401 || apiResponse.status === 402) {
       let wwwAuth = apiResponse.headers.get("www-authenticate");
